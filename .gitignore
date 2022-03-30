@@ -2,3 +2,4 @@
 Cargo.lock
 src/protos/profile.rs
 simple.profile
+**/target

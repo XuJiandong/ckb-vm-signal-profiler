@@ -3,6 +3,7 @@
 
 ```
 apt install -y protobuf-compiler
+go install github.com/google/pprof@latest
 ```
 
 # ckb-vm-signal-profiler

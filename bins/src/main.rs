@@ -8,6 +8,7 @@ use ckb_vm::{
     registers::{A0, A7},
     Bytes, Error as VMError, Memory, Register, SupportMachine, Syscalls,
 };
+use clap::{crate_version, App, Arg};
 use std::env;
 use std::process::exit;
 
@@ -53,15 +54,43 @@ impl<Mac: SupportMachine> Syscalls<Mac> for Debugger {
 }
 
 fn main() {
-    env_logger::init();
+    drop(env_logger::init());
+    let matches = App::new("ckb-signal-profiler")
+        .version(crate_version!())
+        .arg(
+            Arg::with_name("bin")
+                .long("bin")
+                .help("Executable file in RISC-V. Must contain debug information.")
+                .required(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("output")
+                .long("output")
+                .help("Output profiling file. Will be used by `pprof` command line.")
+                .default_value("simple.profile")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("frequency")
+                .long("fre")
+                .short("f")
+                .help("Sampling frequency, per second. Suggested value between 99~199")
+                .default_value("199")
+                .takes_value(true),
+        )
+        .arg(Arg::with_name("args").multiple(true))
+        .get_matches();
 
-    let args: Vec<String> = env::args().skip(1).collect();
-    let code = std::fs::read(args[0].clone()).unwrap().into();
-    let riscv_args: Vec<Bytes> = if args.len() > 2 {
-        (&args[2..]).into_iter().map(|s| s.clone().into()).collect()
-    } else {
-        Vec::new()
-    };
+    let matches_bin = matches.value_of("bin").unwrap();
+    let matches_frequency = matches.value_of("frequency").unwrap();
+    let matches_output = matches.value_of("output").unwrap();
+
+    let matches_args = matches.values_of("args").unwrap_or_default();
+    let riscv_args0: Vec<String> = matches_args.into_iter().map(|s| s.clone().into()).collect();
+    let riscv_args: Vec<Bytes> = riscv_args0.into_iter().map(|s| s.into()).collect();
+    let code = std::fs::read(matches_bin).unwrap().into();
+    let frequency = matches_frequency.parse::<i32>().unwrap();
 
     let asm_core = AsmCoreMachine::new(
         ckb_vm::ISA_IMC | ckb_vm::ISA_B | ckb_vm::ISA_V,
@@ -73,7 +102,7 @@ fn main() {
         .build();
     let mut machine = Box::pin(AsmMachine::new(core, None));
 
-    ckb_vm_signal_profiler::start_profiler("simple.profile", &machine, &code, 1000)
+    ckb_vm_signal_profiler::start_profiler(matches_output, &machine, &code, frequency)
         .expect("profiler start failure");
 
     machine.load_program(&code, &riscv_args).unwrap();
